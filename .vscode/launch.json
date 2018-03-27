@@ -4,24 +4,26 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
-            "name": "(gdb) Launch",
-            "type": "cppdbg",
+            "name": "mpi Launch",
+            "type": "mpirun",
             "request": "launch",
-            "program": "${workspaceFolder}/md5",
-            "args": [],
+            "program": "mpirun",
+            "args": ["-np", "2", "md5", "zz" , "2", "2"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": true,
-            "MIMode": "gdb",
+            "MIMode": "mpirun",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 }
-            ]
+            ],
+            "preLaunchTask": "build break md5"
         }
     ]
 }

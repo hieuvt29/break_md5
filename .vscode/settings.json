@@ -1,6 +1,6 @@
 {
     "files.associations": {
         "system_error": "c",
-        "math.h": "c"
+        "type_traits": "c"
     }
 }
