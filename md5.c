@@ -6,36 +6,40 @@
 #include <unistd.h>
 #include <math.h>
 #include <mpi.h>
+#include <time.h>
 
 #define DATA 1
 #define HASH_PASS 2
 #define RESULT 3
 
-#define dict {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'};
+static int dict[] = {'0','1','2','3','4','5','6','7','8','9', 'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z', 'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z', ' ','!','"','#','$','%','&','\'','(',')','*','+',',','-','.','/', ':',';','<','=','>','?','@','[','\\',']','^','_','`', '{','|','}','~'};
 
-void convert2base(int n, int origin, int *s)
-{ // n = 2, origin = 1 => 0001
-    int res[100];
+void convert2base(int base, int origin, int* s, int len)
+{ // origin is restricted in range base^len
+    if (origin > pow(base, len)) {
+        printf("wrong value!\n");
+        return;
+    }
+    int res[len];
     int tmp;
     int i = 0;
     while (1)
     {
-        tmp = origin % n;
-        origin /= n;
+        tmp = origin % base;
+        origin /= base;
         res[i] = tmp;
         i++;
         // printf("thuong: %d, du: %d\n", origin, tmp);
-        if (origin < n)
+        if (origin < base)
         {
             res[i] = origin;
             break;
         }
     }
     int j;
-    int slen = sizeof(s) / sizeof(s[0]);
     for (j = i; j >= 0; j--)
     {
-        s[slen - j] = res[j];
+        s[len - j - 1] = res[j];
     }
 }
 
@@ -48,7 +52,7 @@ int **partition(int base, int num_process, long sub_space, int passlen)
     }
 
     printf("Start partition: base-%d, num_process-%d, sub_space-%ld, passlen-%d\n", base, num_process, sub_space, passlen);
-    printf("size partition_point: %d\n", sizeof(partition_point[0]));
+    printf("size partition_point: %ld\n", sizeof(partition_point[0]));
     int start = 0;
     for (int i = 0; i < num_process; ++i)
     {
@@ -58,16 +62,16 @@ int **partition(int base, int num_process, long sub_space, int passlen)
             partition_point[i][j] = 0;
         }
 
-        convert2base(base, start, partition_point[i]);
+        convert2base(base, start, partition_point[i], passlen);
         start += sub_space;
     }
     return partition_point;
 }
 
-void *plusOne(int *position, int base, int arrlen)
+void plusOne(int *position, int base, int arrlen)
 {
     int tmp, i, memory = 0;
-    printf("base: %d, arrlen: %d\n", base, arrlen);
+    // printf("base: %d, arrlen: %d\n", base, arrlen);
     tmp = position[arrlen - 1] + 1;
     if (tmp < base)
     {
@@ -108,14 +112,15 @@ int hashcmp(char* hasha, char* hashb) {
     return 0;
 }
 
-long process(int* start_point, char* hash_password, int passlen, int base, int offset) {
+long process(int rank, int* start_point, char* hash_password, int passlen, int base, int sub_space, int offset) {
+    printf("P%d: Processing...\n", rank);
     long pos = 0;
-    int* next_position = start_point;
     char guess[passlen];
+    printf("\n");
     do {
         // find string by array of position in dict
         for (int i = 0; i < passlen; ++i){
-            guess[i] = dict[next_position[i] + offset];
+            guess[i] = dict[start_point[i] + offset];
         }
         // hash with MD5
         char hash[MD5_DIGEST_LENGTH];
@@ -125,15 +130,15 @@ long process(int* start_point, char* hash_password, int passlen, int base, int o
             break;
         }
         pos ++;
-        plusOne(next_position, base, passlen);
+        plusOne(start_point, base, passlen);
     } while(pos < sub_space);
     return (pos >= sub_space)?-1:pos;
 }
 
-int rank0(char *hash_password, int num_process, int base, int passlen, long sub_space, int offset){
+int rank0(char *hash_password, int num_process, int base, int passlen, long sub_space, int offset, clock_t begin){
     // start position of subspace for each process
     // int **partition_point = partition(base, num_process, sub_space, passlen);
-
+    printf("P0: passlen = %d, num_process = %d, sub_space = %ld, base = %d, offset = %d\n", passlen, num_process, sub_space, base, offset);
     MPI_Status status;
     int rank = 0;
     long start = 0;
@@ -142,19 +147,21 @@ int rank0(char *hash_password, int num_process, int base, int passlen, long sub_
         // MPI_Send(partition_point + i*passlen, passlen, MPI_INT, i, DATA, MPI_COMM_WORLD);
         MPI_Send(&start, 1, MPI_LONG, i, DATA, MPI_COMM_WORLD);
     }
-    char* start_point[passlen];
+    int start_point[passlen];
     for (int i = 0; i<passlen; ++i) {
         start_point[i] = 0;
     }
-    long res = process(start_point, passlen, base, offset);
+
+    long res = process(0, start_point, hash_password, passlen, base, sub_space, offset);
     if (res != -1) {
-        printf("Password found in process 0, at position: %ld!\n", res);
+        printf("Password found at P0, at position: %ld!\n", res);
     } else {
         long found;
         for (int i = 1; i < num_process; ++i){
             MPI_Recv(&found, 1, MPI_LONG, i, RESULT, MPI_COMM_WORLD, &status);
+            printf("P0: result from P%d = %ld\n", i, found);
             if (found != -1) {
-                printf("Password found in process %d, at position: %ld!\n", i, found);
+                printf("P0: Password found in P%d, at position %ld\n", i, found);
                 break;
             }
         }
@@ -165,23 +172,29 @@ int rank0(char *hash_password, int num_process, int base, int passlen, long sub_
     // {
     //     free(partition_point[i]);
     // }
-    printf("Process done!\n");
+    printf("P0: Process done!\n");
+    clock_t end = clock();
+    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    printf("runtime: %fs\n", time_spent);
     return 0;
 }
 int ranki(int rank, int num_process, int base, char* hash_password, int passlen, long sub_space, int offset){
-    MPI_status status;
-    char start_point[passlen];
+    MPI_Status status;
+    int start_point[passlen];
+    for (int i = 0; i < passlen; ++i) start_point[i] = 0;
     long start;
     MPI_Recv(&start, 1, MPI_LONG, 0, DATA, MPI_COMM_WORLD, &status);
-    convert2base(base, start, start_point);
-
-    long res = process(start_point, hash_password, passlen, base, offset);
+    convert2base(base, start, start_point, passlen);
+    // printf("P%d: start = %ld, base = %d", rank, start, base);
+    long res = process(rank, start_point, hash_password, passlen, base, sub_space, offset);
     MPI_Send(&res, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD);
     return 0;
 }
 
+/* here, do your time-consuming job */
 int main(int argc, char *argv[])
 {
+    clock_t begin = clock();
     MPI_Init(&argc, &argv);
     char *password = argv[1];
     int passlen = atoi(argv[2]);
@@ -225,7 +238,6 @@ int main(int argc, char *argv[])
             break;
         }
     }
-    printf("passlen: %d, num_process: %d, sub_space: %d, base: %d, offset: %d\n", passlen, num_process, sub_space, base, offset);
 
     long sub_space = (long)pow(base, passlen) / num_process;
     char hash_password[MD5_DIGEST_LENGTH];
@@ -234,7 +246,7 @@ int main(int argc, char *argv[])
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank == 0) {
-        rank0(hash_password, num_process, base, passlen, sub_space, offset);
+        rank0(hash_password, num_process, base, passlen, sub_space, offset, begin);
     } else {
         ranki(rank, num_process, base, hash_password, passlen, sub_space, offset);
     }
