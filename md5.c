@@ -112,8 +112,8 @@ int hashcmp(char* hasha, char* hashb) {
     return 0;
 }
 
-long process(int rank, int* start_point, char* hash_password, int passlen, int base, int sub_space, int offset) {
-    printf("P%d: Processing...\n", rank);
+long process(int rank, char* processorname, int* start_point, char* hash_password, int passlen, int base, int sub_space, int offset) {
+    printf("P%d-%s: Processing...\n", rank, processorname);
     long pos = 0;
     char guess[passlen];
     printf("\n");
@@ -135,10 +135,39 @@ long process(int rank, int* start_point, char* hash_password, int passlen, int b
     return (pos >= sub_space)?-1:pos;
 }
 
-int rank0(char *hash_password, int num_process, int base, int passlen, long sub_space, int offset, clock_t begin){
+int rank0(char* processorname, char *hash_password, int num_process, int base, int passlen, int passtype, long sub_space, int offset, clock_t begin){
+    switch (passtype)
+    {
+        case 1: // number only
+        {
+            printf("Passtype: numbers only\n");
+            break;
+        }
+        case 2: // lowercase characters only
+        {
+            printf("Passtype: lowercase characters only\n");
+            break;
+        }
+        case 3: // lowercase & uppercase charactoers
+        {
+            printf("Passtype: lowercase & uppercase characters\n");
+            break;
+        }
+        case 4: // number and character
+        {
+            printf("Passtype: numbers and characters\n");
+            break;
+        }
+        case 5: // number, character, special character
+        {
+            printf("Passtype: numbers, characters and special characters\n");
+            break;
+        }
+    }
+
     // start position of subspace for each process
     // int **partition_point = partition(base, num_process, sub_space, passlen);
-    printf("P0: passlen = %d, num_process = %d, sub_space = %ld, base = %d, offset = %d\n", passlen, num_process, sub_space, base, offset);
+    printf("P0-%s: passlen = %d, num_process = %d, sub_space = %ld, base = %d, offset = %d\n", processorname, passlen, num_process, sub_space, base, offset);
     MPI_Status status;
     int rank = 0;
     long start = 0;
@@ -152,16 +181,16 @@ int rank0(char *hash_password, int num_process, int base, int passlen, long sub_
         start_point[i] = 0;
     }
 
-    long res = process(0, start_point, hash_password, passlen, base, sub_space, offset);
+    long res = process(0, processorname, start_point, hash_password, passlen, base, sub_space, offset);
     if (res != -1) {
-        printf("Password found at P0, at position: %ld!\n", res);
+        printf("P0-%s: Password found at P0, at position: %ld!\n", processorname, res);
     } else {
         long found;
         for (int i = 1; i < num_process; ++i){
             MPI_Recv(&found, 1, MPI_LONG, i, RESULT, MPI_COMM_WORLD, &status);
-            printf("P0: result from P%d = %ld\n", i, found);
+            printf("P0-%s: result from P%d = %ld\n", processorname, i, found);
             if (found != -1) {
-                printf("P0: Password found in P%d, at position %ld\n", i, found);
+                printf("P0-%s: Password found in P%d, at position %ld\n", processorname, i, found + i*sub_space);
                 break;
             }
         }
@@ -172,13 +201,13 @@ int rank0(char *hash_password, int num_process, int base, int passlen, long sub_
     // {
     //     free(partition_point[i]);
     // }
-    printf("P0: Process done!\n");
+    printf("P0-%s: Process done!\n", processorname);
     clock_t end = clock();
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
     printf("runtime: %fs\n", time_spent);
     return 0;
 }
-int ranki(int rank, int num_process, int base, char* hash_password, int passlen, long sub_space, int offset){
+int ranki(int rank, char* processorname, int num_process, int base, char* hash_password, int passlen, long sub_space, int offset){
     MPI_Status status;
     int start_point[passlen];
     for (int i = 0; i < passlen; ++i) start_point[i] = 0;
@@ -186,16 +215,26 @@ int ranki(int rank, int num_process, int base, char* hash_password, int passlen,
     MPI_Recv(&start, 1, MPI_LONG, 0, DATA, MPI_COMM_WORLD, &status);
     convert2base(base, start, start_point, passlen);
     // printf("P%d: start = %ld, base = %d", rank, start, base);
-    long res = process(rank, start_point, hash_password, passlen, base, sub_space, offset);
+    long res = process(rank, processorname, start_point, hash_password, passlen, base, sub_space, offset);
     MPI_Send(&res, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD);
     return 0;
 }
 
-/* here, do your time-consuming job */
 int main(int argc, char *argv[])
 {
-    clock_t begin = clock();
+
     MPI_Init(&argc, &argv);
+    int rank, hostlen;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    char processorname[50];
+    MPI_Get_processor_name(processorname, &hostlen);
+    if (argc < 4) {
+        if (rank == 0) printf("usage: md5 <input-password> <password-length> <password-type>[1/2/3/4/5]\n");
+        MPI_Finalize();
+        return 1;
+    }
+    clock_t begin = clock();
+
     char *password = argv[1];
     int passlen = atoi(argv[2]);
     int passtype = atoi(argv[3]);
@@ -207,33 +246,28 @@ int main(int argc, char *argv[])
     {
         case 1: // number only
         {
-            printf("Passtype: number only\n");
             base = 10;
             break;
         }
         case 2: // lowercase characters only
         {
-            printf("Passtype: character only\n");
             base = 26;
             offset = 10;
             break;
         }
-        case 3: // uppercase characters only
+        case 3: // lowercase & uppercase characters
         {
-            printf("Passtype: character only\n");
             base = 52;
             offset = 10;
             break;
         }
-        case 4: // number and character
+        case 4: // number and characters
         {
-            printf("Passtype: number and character\n");
             base = 62;
             break;
         }
         case 5: // number, character, special character
         {
-            printf("Passtype: number, character and special character\n");
             base = 95;
             break;
         }
@@ -242,16 +276,14 @@ int main(int argc, char *argv[])
     long sub_space = (long)pow(base, passlen) / num_process;
     char hash_password[MD5_DIGEST_LENGTH];
     MD5(password, passlen, hash_password);
-
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    
     if (rank == 0) {
-        rank0(hash_password, num_process, base, passlen, sub_space, offset, begin);
+        rank0(processorname, hash_password, num_process, base, passlen, passtype, sub_space, offset, begin);
     } else {
-        ranki(rank, num_process, base, hash_password, passlen, sub_space, offset);
+        ranki(rank, processorname, num_process, base, hash_password, passlen, sub_space, offset);
     }
 
-    printf("\nProcess %d exiting...\n", rank);
+    printf("Process %d exiting...\n", rank);
     MPI_Finalize();
     return 0;
 }
