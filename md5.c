@@ -112,7 +112,7 @@ int hashcmp(char* hasha, char* hashb) {
     return 0;
 }
 
-long process(int rank, char* processorname, int* start_point, char* hash_password, int passlen, int base, int sub_space, int offset) {
+long process(int rank, char* processorname, int* start_point, char* hash_password, int passlen, int base, long sub_space, int offset) {
     printf("P%d-%s: Processing...\n", rank, processorname);
     long pos = 0;
     char guess[passlen];
@@ -182,6 +182,7 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
     }
 
     long res = process(0, processorname, start_point, hash_password, passlen, base, sub_space, offset);
+    printf("res from 0: %ld\n", res);
     if (res != -1) {
         printf("P0-%s: Password found at P0, at position: %ld!\n", processorname, res);
     } else {
