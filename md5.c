@@ -138,7 +138,7 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
     MPI_Irecv(recv_guess, passlen, MPI_CHAR, MPI_ANY_SOURCE, RESULT, MPI_COMM_WORLD, &request);
     
     while(pos < (sub_space + remain) && !isFound) {
-        if (pos % 1000000) {
+        if (pos % 10000000 == 0) {
             printf("P0: checking...\n");
         }
         // find string by array of position in dict
@@ -210,7 +210,7 @@ int ranki(int rank, char* processorname, int base, char* hash_password, int pass
     MPI_Request request;
     MPI_Irecv(&found, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD, &request);
     while(pos < sub_space && !isFound) {
-        if (pos % 1000000) {
+        if (pos % 10000000 == 0) {
             printf("P%d: checking...\n", rank);
         }
         // find string by array of position in dict
