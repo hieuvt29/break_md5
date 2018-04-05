@@ -163,20 +163,23 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
     for (int i = 1; i < num_process; ++i) {
         MPI_Irecv(&state, 1, MPI_INT, i, FINISH, MPI_COMM_WORLD, finish_request + i - 1);
     }
-    int isAllFinished = 0;
-    while(num_process != 1 && (!isFound || !isAllFinished)) {
-        for (int i = 1; i < num_process; ++i) {
-            MPI_Test(&request, &isFound, &found_status);
-            MPI_Test(finish_request + i - 1, finished + i - 1, &finish_status);
-        }
-        isAllFinished = 1;
-        for (int i = 1; i < num_process; ++i) {
-            if (!finished[i - 1]) {
-                isAllFinished = 0;
-                break;
+    if (pos >= (sub_space + remain) && !isFound) {
+        int isAllFinished = 0;
+            while(num_process != 1 && (!isFound || !isAllFinished)) {
+                for (int i = 1; i < num_process; ++i) {
+                    MPI_Test(&request, &isFound, &found_status);
+                    MPI_Test(finish_request + i - 1, finished + i - 1, &finish_status);
+                }
+                isAllFinished = 1;
+                for (int i = 1; i < num_process; ++i) {
+                    if (!finished[i - 1]) {
+                        isAllFinished = 0;
+                        break;
+                    }
+                }
             }
-        }
     }
+    
 
     if (isFound){
         printf("P0-%s: Password found: %s\n", processorname, recv_guess);
