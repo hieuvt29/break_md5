@@ -11,6 +11,7 @@
 #define DATA 1
 #define HASH_PASS 2
 #define RESULT 3
+#define FINISH 4
 
 static int dict[] = {'0','1','2','3','4','5','6','7','8','9', 'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z', 'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z', ' ','!','"','#','$','%','&','\'','(',')','*','+',',','-','.','/', ':',';','<','=','>','?','@','[','\\',']','^','_','`', '{','|','}','~'};
 
@@ -41,31 +42,6 @@ void convert2base(int base, int origin, int* s, int len)
     {
         s[len - j - 1] = res[j];
     }
-}
-
-int **partition(int base, int num_process, long sub_space, int passlen)
-{
-    int **partition_point = (int **)malloc(num_process * sizeof(int *));
-    for (int i = 0; i < num_process; ++i)
-    {
-        partition_point[i] = (int *)malloc(passlen * sizeof(int));
-    }
-
-    printf("Start partition: base-%d, num_process-%d, sub_space-%ld, passlen-%d\n", base, num_process, sub_space, passlen);
-    printf("size partition_point: %ld\n", sizeof(partition_point[0]));
-    int start = 0;
-    for (int i = 0; i < num_process; ++i)
-    {
-        printf("start: %d\n", start);
-        for (int j = 0; j < passlen; ++j)
-        {
-            partition_point[i][j] = 0;
-        }
-
-        convert2base(base, start, partition_point[i], passlen);
-        start += sub_space;
-    }
-    return partition_point;
 }
 
 void plusOne(int *position, int base, int arrlen)
@@ -100,42 +76,10 @@ void plusOne(int *position, int base, int arrlen)
     }
 }
 
-int hashcmp(char* hasha, char* hashb) {
-    int size = sizeof(hasha) / sizeof(hasha[0]);
-    for (int i = 0; i < size; ++i){
-        if (hasha[i] < hashb[i]) {
-            return -1;
-        } else if (hasha[i] > hashb[i]){
-            return 1;
-        }
-    }
-    return 0;
-}
-
-long process(int rank, char* processorname, int* start_point, char* hash_password, int passlen, int base, long sub_space, int offset) {
-    printf("P%d-%s: Processing...\n", rank, processorname);
-    long pos = 0;
-    char guess[passlen];
-    printf("\n");
-    do {
-        // find string by array of position in dict
-        for (int i = 0; i < passlen; ++i){
-            guess[i] = dict[start_point[i] + offset];
-        }
-        // hash with MD5
-        char hash[MD5_DIGEST_LENGTH];
-        MD5(guess, passlen, hash);
-        // compare and return result
-        if (hashcmp(hash, hash_password) == 0) {
-            break;
-        }
-        pos ++;
-        plusOne(start_point, base, passlen);
-    } while(pos < sub_space);
-    return (pos >= sub_space)?-1:pos;
-}
-
 int rank0(char* processorname, char *hash_password, int num_process, int base, int passlen, int passtype, long sub_space, int offset, clock_t begin){
+    long start = 0;
+    int start_point[passlen];
+
     switch (passtype)
     {
         case 1: // number only
@@ -165,59 +109,119 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
         }
     }
 
-    // start position of subspace for each process
-    // int **partition_point = partition(base, num_process, sub_space, passlen);
     printf("P0-%s: passlen = %d, num_process = %d, sub_space = %ld, base = %d, offset = %d\n", processorname, passlen, num_process, sub_space, base, offset);
-    MPI_Status status;
-    int rank = 0;
-    long start = 0;
+    long remain = pow(base, passlen) - sub_space * num_process;
     for (int i = 1; i < num_process; ++i){
-        start = i*sub_space;
-        // MPI_Send(partition_point + i*passlen, passlen, MPI_INT, i, DATA, MPI_COMM_WORLD);
+        start = i*sub_space + remain;
         MPI_Send(&start, 1, MPI_LONG, i, DATA, MPI_COMM_WORLD);
     }
-    int start_point[passlen];
+    // Init start point for frontend node
+    
     for (int i = 0; i<passlen; ++i) {
         start_point[i] = 0;
     }
 
-    long res = process(0, processorname, start_point, hash_password, passlen, base, sub_space, offset);
-    printf("res from 0: %ld\n", res);
-    if (res != -1) {
-        printf("P0-%s: Password found at P0, at position: %ld!\n", processorname, res);
-    } else {
-        long found;
-        for (int i = 1; i < num_process; ++i){
-            MPI_Recv(&found, 1, MPI_LONG, i, RESULT, MPI_COMM_WORLD, &status);
-            printf("P0-%s: result from P%d = %ld\n", processorname, i, found);
-            if (found != -1) {
-                printf("P0-%s: Password found in P%d, at position %ld\n", processorname, i, found + i*sub_space);
+    long pos = 0;
+    int isFound = 0, state = 0;
+    unsigned char guess[passlen];
+    unsigned char recv_guess[passlen];
+    MPI_Request request;
+    MPI_Request finish_request[num_process - 1];
+    MPI_Status found_status;
+    MPI_Status finish_status;
+    int finished[num_process - 1];
+    MPI_Irecv(recv_guess, passlen, MPI_CHAR, MPI_ANY_SOURCE, RESULT, MPI_COMM_WORLD, &request);
+    
+    while(pos < (sub_space + remain) && !isFound) {
+        // find string by array of position in dict
+        for (int i = 0; i < passlen; ++i){
+            guess[i] = dict[start_point[i] + offset];
+        }
+        // hash with MD5
+        unsigned char hash[MD5_DIGEST_LENGTH];
+        unsigned char hash_hex[32];
+        MD5(guess, strlen(guess), hash);
+        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i){
+            sprintf(hash_hex + i*2, "%02x", (unsigned int)hash[i]);
+        }
+        // compare and return result
+        if (strcmp(hash_hex, hash_password) == 0) {
+            break;
+        }
+        pos ++;
+        plusOne(start_point, base, passlen);
+        MPI_Test(&request, &isFound, &found_status);
+    }
+    for (int i = 1; i < num_process; ++i) {
+        MPI_Irecv(&state, 1, MPI_INT, i, FINISH, MPI_COMM_WORLD, finish_request + i - 1);
+    }
+    int isAllFinished = 0;
+    while(num_process != 1 && (!isFound || !isAllFinished)) {
+        for (int i = 1; i < num_process; ++i) {
+            MPI_Test(&request, &isFound, &found_status);
+            MPI_Test(finish_request + i - 1, finished + i - 1, &finish_status);
+        }
+        isAllFinished = 1;
+        for (int i = 1; i < num_process; ++i) {
+            if (!finished[i - 1]) {
+                isAllFinished = 0;
                 break;
             }
         }
     }
+
+    if (isFound){
+        printf("P0-%s: Password found: %s\n", processorname, recv_guess);
+    } else if (pos < sub_space) {
+        printf("P0-%s: Password found: %s\n", processorname, guess);
+        for (int i = 0; i < num_process; ++i) {
+            MPI_Send(&isFound, 1, MPI_INT, i, RESULT, MPI_COMM_WORLD);
+        }
+    } else {
+        printf("something failed!\n");
+    }
     
-    // printf("Free partition_point...\n");
-    // for (int i = 0; i < num_process; ++i)
-    // {
-    //     free(partition_point[i]);
-    // }
     printf("P0-%s: Process done!\n", processorname);
     clock_t end = clock();
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
     printf("runtime: %fs\n", time_spent);
     return 0;
 }
-int ranki(int rank, char* processorname, int num_process, int base, char* hash_password, int passlen, long sub_space, int offset){
+int ranki(int rank, char* processorname, int base, char* hash_password, int passlen, long sub_space, int offset){
     MPI_Status status;
     int start_point[passlen];
     for (int i = 0; i < passlen; ++i) start_point[i] = 0;
+
     long start;
     MPI_Recv(&start, 1, MPI_LONG, 0, DATA, MPI_COMM_WORLD, &status);
     convert2base(base, start, start_point, passlen);
-    // printf("P%d: start = %ld, base = %d", rank, start, base);
-    long res = process(rank, processorname, start_point, hash_password, passlen, base, sub_space, offset);
-    MPI_Send(&res, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD);
+
+    unsigned char guess[passlen];
+    long found = -1, pos = 0;
+    int isFound = 0, state = 0;
+    MPI_Request request;
+    MPI_Irecv(&found, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD, &request);
+    while(pos < sub_space && !isFound) {
+        // find string by array of position in dict
+        for (int i = 0; i < passlen; ++i){
+            guess[i] = dict[start_point[i] + offset];
+        }
+        // hash with MD5
+        unsigned char hash[MD5_DIGEST_LENGTH];
+        unsigned char hash_hex[32];
+        MD5(guess, passlen, hash);
+        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) 
+            sprintf(&hash_hex[i*2], "%02x", (unsigned int)hash[i]);
+        // compare and return result
+        if (strcmp(hash_hex, hash_password) == 0) {
+            MPI_Send(guess, passlen, MPI_CHAR, 0, RESULT, MPI_COMM_WORLD);
+            break;
+        }
+        pos ++;
+        plusOne(start_point, base, passlen);
+        MPI_Test(&request, &isFound, &status);
+    }
+    MPI_Send(&state, 1, MPI_INT, 0, FINISH, MPI_COMM_WORLD);
     return 0;
 }
 
@@ -236,13 +240,12 @@ int main(int argc, char *argv[])
     }
     clock_t begin = clock();
 
-    char *password = argv[1];
+    char *hash_password = argv[1];
     int passlen = atoi(argv[2]);
     int passtype = atoi(argv[3]);
     int num_process = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &num_process);
-
-    int offset = 0, base = 0;
+    int offset = 0, base = 10;
     switch (passtype)
     {
         case 1: // number only
@@ -275,13 +278,10 @@ int main(int argc, char *argv[])
     }
 
     long sub_space = (long)pow(base, passlen) / num_process;
-    char hash_password[MD5_DIGEST_LENGTH];
-    MD5(password, passlen, hash_password);
-    
     if (rank == 0) {
         rank0(processorname, hash_password, num_process, base, passlen, passtype, sub_space, offset, begin);
     } else {
-        ranki(rank, processorname, num_process, base, hash_password, passlen, sub_space, offset);
+        ranki(rank, processorname, base, hash_password, passlen, sub_space, offset);
     }
 
     printf("Process %d exiting...\n", rank);
@@ -301,4 +301,43 @@ int main(int argc, char *argv[])
 
 ["0","1","2","3","4","5","6","7","8","9", "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z", "A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z", " ","!","\"","#","$","%","&","'","(",")","*","+",",","-",".","/", ":",";","<","=",">","?","@","[","\\","]","^","_","`", "{","|","}","~"]
 - tập ký tự: chỉ số (0-9)/ chỉ chữ (10-61)/số và chữ (0-61)/ số và chữ và ký tự đặc biệt (0-94)
+*/
+
+/* 
+int **partition(int base, int num_process, long sub_space, int passlen)
+{
+    int **partition_point = (int **)malloc(num_process * sizeof(int *));
+    for (int i = 0; i < num_process; ++i)
+    {
+        partition_point[i] = (int *)malloc(passlen * sizeof(int));
+    }
+
+    printf("Start partition: base-%d, num_process-%d, sub_space-%ld, passlen-%d\n", base, num_process, sub_space, passlen);
+    printf("size partition_point: %ld\n", sizeof(partition_point[0]));
+    int start = 0;
+    for (int i = 0; i < num_process; ++i)
+    {
+        printf("start: %d\n", start);
+        for (int j = 0; j < passlen; ++j)
+        {
+            partition_point[i][j] = 0;
+        }
+
+        convert2base(base, start, partition_point[i], passlen);
+        start += sub_space;
+    }
+    return partition_point;
+}
+
+int hashcmp(char* hasha, char* hashb) {
+    int size = sizeof(hasha) / sizeof(hasha[0]);
+    for (int i = 0; i < size; ++i){
+        if (hasha[i] < hashb[i]) {
+            return -1;
+        } else if (hasha[i] > hashb[i]){
+            return 1;
+        }
+    }
+    return 0;
+}
 */
