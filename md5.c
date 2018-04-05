@@ -92,17 +92,22 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
             printf("Passtype: lowercase characters only\n");
             break;
         }
-        case 3: // lowercase & uppercase charactoers
+        case 3: // lowercase & number characters
+        {
+            printf("Passtype: lowercase characters and numbers\n");
+            break;
+        }
+        case 4: // lowercase & uppercase charactoers
         {
             printf("Passtype: lowercase & uppercase characters\n");
             break;
         }
-        case 4: // number and character
+        case 5: // number and character
         {
             printf("Passtype: numbers and characters\n");
             break;
         }
-        case 5: // number, character, special character
+        case 6: // number, character, special character
         {
             printf("Passtype: numbers, characters and special characters\n");
             break;
@@ -133,6 +138,9 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
     MPI_Irecv(recv_guess, passlen, MPI_CHAR, MPI_ANY_SOURCE, RESULT, MPI_COMM_WORLD, &request);
     
     while(pos < (sub_space + remain) && !isFound) {
+        if (pos % 1000000) {
+            printf("P0: checking...\n");
+        }
         // find string by array of position in dict
         for (int i = 0; i < passlen; ++i){
             guess[i] = dict[start_point[i] + offset];
@@ -202,6 +210,9 @@ int ranki(int rank, char* processorname, int base, char* hash_password, int pass
     MPI_Request request;
     MPI_Irecv(&found, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD, &request);
     while(pos < sub_space && !isFound) {
+        if (pos % 1000000) {
+            printf("P%d: checking...\n", rank);
+        }
         // find string by array of position in dict
         for (int i = 0; i < passlen; ++i){
             guess[i] = dict[start_point[i] + offset];
@@ -259,18 +270,23 @@ int main(int argc, char *argv[])
             offset = 10;
             break;
         }
-        case 3: // lowercase & uppercase characters
+        case 3: // lowercase & number characters
+        {
+            base = 36;
+            break;
+        }
+        case 4: // lowercase & uppercase characters
         {
             base = 52;
             offset = 10;
             break;
         }
-        case 4: // number and characters
+        case 5: // number and characters
         {
             base = 62;
             break;
         }
-        case 5: // number, character, special character
+        case 6: // number, character, special character
         {
             base = 95;
             break;
