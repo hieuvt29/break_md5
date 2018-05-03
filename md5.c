@@ -13,11 +13,12 @@
 #define RESULT 3
 #define FINISH 4
 
-static int dict[] = {'0','1','2','3','4','5','6','7','8','9', 'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z', 'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z', ' ','!','"','#','$','%','&','\'','(',')','*','+',',','-','.','/', ':',';','<','=','>','?','@','[','\\',']','^','_','`', '{','|','}','~'};
+static int dict[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'};
 
-void convert2base(int base, int origin, int* s, int len)
+void convert2base(int base, int origin, int *s, int len)
 { // origin is restricted in range base^len
-    if (origin > pow(base, len)) {
+    if (origin > pow(base, len))
+    {
         printf("wrong value!\n");
         return;
     }
@@ -76,57 +77,60 @@ void plusOne(int *position, int base, int arrlen)
     }
 }
 
-int rank0(char* processorname, char *hash_password, int num_process, int base, int passlen, int passtype, long sub_space, int offset, clock_t begin){
+int rank0(char *hash_password, int num_process, int base, int passlen, int passtype, long sub_space, int offset, clock_t begin)
+{
     long start = 0;
     int start_point[passlen];
 
     switch (passtype)
     {
-        case 1: // number only
-        {
-            printf("Passtype: numbers only\n");
-            break;
-        }
-        case 2: // lowercase characters only
-        {
-            printf("Passtype: lowercase characters only\n");
-            break;
-        }
-        case 3: // lowercase & number characters
-        {
-            printf("Passtype: lowercase characters and numbers\n");
-            break;
-        }
-        case 4: // lowercase & uppercase charactoers
-        {
-            printf("Passtype: lowercase & uppercase characters\n");
-            break;
-        }
-        case 5: // number and character
-        {
-            printf("Passtype: numbers and characters\n");
-            break;
-        }
-        case 6: // number, character, special character
-        {
-            printf("Passtype: numbers, characters and special characters\n");
-            break;
-        }
+    case 1: // number only
+    {
+        printf("PASSTYPE: numbers only\n");
+        break;
+    }
+    case 2: // lowercase characters only
+    {
+        printf("PASSTYPE: lowercase characters only\n");
+        break;
+    }
+    case 3: // lowercase & number characters
+    {
+        printf("PASSTYPE: lowercase characters and numbers\n");
+        break;
+    }
+    case 4: // lowercase & uppercase charactoers
+    {
+        printf("PASSTYPE: lowercase & uppercase characters\n");
+        break;
+    }
+    case 5: // number and character
+    {
+        printf("PASSTYPE: numbers and characters\n");
+        break;
+    }
+    case 6: // number, character, special character
+    {
+        printf("PASSTYPE: numbers, characters and special characters\n");
+        break;
+    }
     }
 
-    printf("P0-%s: passlen = %d, num_process = %d, sub_space = %ld, base = %d, offset = %d\n", processorname, passlen, num_process, sub_space, base, offset);
+    printf("P0: passlen = %d, num_process = %d, sub_space = %ld, base = %d, offset = %d\n", passlen, num_process, sub_space, base, offset);
     long remain = pow(base, passlen) - sub_space * num_process;
-    for (int i = 1; i < num_process; ++i){
-        start = i*sub_space + remain;
+    
+    for (int i = 1; i < num_process; ++i)
+    {
+        start = i * sub_space + remain;
         MPI_Send(&start, 1, MPI_LONG, i, DATA, MPI_COMM_WORLD);
     }
     // Init start point for frontend node
-    
-    for (int i = 0; i<passlen; ++i) {
+    for (int i = 0; i < passlen; ++i)
+    {
         start_point[i] = 0;
     }
 
-    long pos = 0;
+    long pos = 0, found_pos = -1;
     int isFound = 0, state = 0;
     unsigned char guess[passlen];
     unsigned char recv_guess[passlen];
@@ -135,73 +139,118 @@ int rank0(char* processorname, char *hash_password, int num_process, int base, i
     MPI_Status found_status;
     MPI_Status finish_status;
     int finished[num_process - 1];
+
     MPI_Irecv(recv_guess, passlen, MPI_CHAR, MPI_ANY_SOURCE, RESULT, MPI_COMM_WORLD, &request);
-    
-    while(pos < (sub_space + remain) && !isFound) {
-        if (pos % 10000000 == 0) {
+    MPI_Irecv(&found_pos, 1, MPI_LONG, MPI_ANY_SOURCE, RESULT, MPI_COMM_WORLD, &request);
+
+    while (pos < (sub_space + remain) && !isFound)
+    {
+        if (pos % 10000000 == 0)
+        {
             printf("P0: checking...\n");
         }
         // find string by array of position in dict
-        for (int i = 0; i < passlen; ++i){
+        for (int i = 0; i < passlen; ++i)
+        {
             guess[i] = dict[start_point[i] + offset];
         }
         // hash with MD5
         unsigned char hash[MD5_DIGEST_LENGTH];
         unsigned char hash_hex[32];
         MD5(guess, strlen(guess), hash);
-        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i){
-            sprintf(hash_hex + i*2, "%02x", (unsigned int)hash[i]);
+        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+        {
+            sprintf(hash_hex + i * 2, "%02x", (unsigned int)hash[i]);
         }
         // compare and return result
-        if (strcmp(hash_hex, hash_password) == 0) {
+        if (strcmp(hash_hex, hash_password) == 0)
+        {
             break;
         }
-        pos ++;
+        pos++;
         plusOne(start_point, base, passlen);
         MPI_Test(&request, &isFound, &found_status);
     }
-    for (int i = 1; i < num_process; ++i) {
-        MPI_Irecv(&state, 1, MPI_INT, i, FINISH, MPI_COMM_WORLD, finish_request + i - 1);
-    }
-    if (pos >= (sub_space + remain) && !isFound) {
-        int isAllFinished = 0;
-            while(num_process != 1 && (!isFound || !isAllFinished)) {
-                for (int i = 1; i < num_process; ++i) {
-                    MPI_Test(&request, &isFound, &found_status);
-                    MPI_Test(finish_request + i - 1, finished + i - 1, &finish_status);
-                }
-                isAllFinished = 1;
-                for (int i = 1; i < num_process; ++i) {
-                    if (!finished[i - 1]) {
-                        isAllFinished = 0;
-                        break;
-                    }
-                }
-            }
-    }
-    
-
-    if (isFound){
-        printf("P0-%s: Password found: %s\n", processorname, recv_guess);
-    } else if (pos < sub_space) {
-        printf("P0-%s: Password found: %s\n", processorname, guess);
-        for (int i = 0; i < num_process; ++i) {
+    if (isFound) // other processes found the message
+    {
+        printf("P0: PASSWORD: \"%s\" , at position %ld\n", recv_guess, found_pos);
+        for (int i = 0; i < num_process; ++i)
+        {
             MPI_Send(&isFound, 1, MPI_INT, i, RESULT, MPI_COMM_WORLD);
         }
-    } else {
-        printf("something failed!\n");
     }
-    
-    printf("P0-%s: Process done!\n", processorname);
-    clock_t end = clock();
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("runtime: %fs\n", time_spent);
+    else if (pos < (sub_space + remain)) // root process found the message
+    {
+        isFound = 1;
+        printf("P0: PASSWORD: \"%s\" , at position %ld\n", guess, pos);
+        for (int i = 0; i < num_process; ++i)
+        {
+            MPI_Send(&isFound, 1, MPI_INT, i, RESULT, MPI_COMM_WORLD);
+        }
+    }
+    else // other processes are still run
+    {
+        // int timeout = 0;
+        while (num_process != 1 && !isFound)
+        {
+            for (int i = 1; i < num_process; ++i)
+            {
+                MPI_Test(&request, &isFound, &found_status);
+            }
+        }
+        if (isFound)
+        {
+            printf("P0: PASSWORD: \"%s\" , at position %ld\n", recv_guess, found_pos);
+            for (int i = 0; i < num_process; ++i)
+            {
+                MPI_Send(&isFound, 1, MPI_INT, i, RESULT, MPI_COMM_WORLD);
+            }
+        }
+    }
+
+    if (!isFound)
+    {
+        printf("P0: Something wrong!\n");
+    }
+    else
+    {
+        for (int i = 1; i < num_process; ++i)
+        {
+            MPI_Irecv(&state, 1, MPI_INT, i, FINISH, MPI_COMM_WORLD, finish_request + i - 1);
+        }
+        int isAllFinished = 0;
+        while (num_process != 1 && !isAllFinished)
+        {
+            for (int i = 1; i < num_process; ++i)
+            {
+                MPI_Test(finish_request + i - 1, finished + i - 1, &finish_status);
+            }
+            isAllFinished = 1;
+            for (int i = 1; i < num_process; ++i)
+            {
+                if (!finished[i - 1])
+                {
+                    isAllFinished = 0;
+                    break;
+                }
+            }
+        }
+        printf("P0: All processes are finished!\n");
+    }
+
+
+    printf("P0: Process done!\n");
+    // clock_t end = clock();
+    // double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    // printf("P0: runtime: %fs\n", time_spent);
     return 0;
 }
-int ranki(int rank, char* processorname, int base, char* hash_password, int passlen, long sub_space, int offset){
+int ranki(int rank, int base, char *hash_password, int passlen, long sub_space, int offset)
+{
     MPI_Status status;
     int start_point[passlen];
-    for (int i = 0; i < passlen; ++i) start_point[i] = 0;
+    for (int i = 0; i < passlen; ++i)
+        start_point[i] = 0;
 
     long start;
     MPI_Recv(&start, 1, MPI_LONG, 0, DATA, MPI_COMM_WORLD, &status);
@@ -211,30 +260,44 @@ int ranki(int rank, char* processorname, int base, char* hash_password, int pass
     long found = -1, pos = 0;
     int isFound = 0, state = 0;
     MPI_Request request;
+    // MPI_Request send_request1, send_request2;
+
     MPI_Irecv(&found, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD, &request);
-    while(pos < sub_space && !isFound) {
-        if (pos % 10000000 == 0) {
+    while (pos < sub_space && !isFound)
+    {
+        if (pos % 10000000 == 0)
+        {
             printf("P%d: checking...\n", rank);
         }
         // find string by array of position in dict
-        for (int i = 0; i < passlen; ++i){
+        for (int i = 0; i < passlen; ++i)
+        {
             guess[i] = dict[start_point[i] + offset];
         }
         // hash with MD5
         unsigned char hash[MD5_DIGEST_LENGTH];
         unsigned char hash_hex[32];
         MD5(guess, passlen, hash);
-        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) 
-            sprintf(&hash_hex[i*2], "%02x", (unsigned int)hash[i]);
+        for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
+            sprintf(&hash_hex[i * 2], "%02x", (unsigned int)hash[i]);
         // compare and return result
-        if (strcmp(hash_hex, hash_password) == 0) {
+        if (strcmp(hash_hex, hash_password) == 0)
+        {
+            long original_pos = pos + start;
             MPI_Send(guess, passlen, MPI_CHAR, 0, RESULT, MPI_COMM_WORLD);
+            MPI_Send(&original_pos, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD);
+            // MPI_Isend(guess, passlen, MPI_CHAR, 0, RESULT, MPI_COMM_WORLD, &send_request1);
+            // MPI_Isend(&original_pos, 1, MPI_LONG, 0, RESULT, MPI_COMM_WORLD, &send_request2);
             break;
         }
-        pos ++;
+        pos++;
         plusOne(start_point, base, passlen);
         MPI_Test(&request, &isFound, &status);
     }
+
+    // MPI_Wait(&send_request1, &status);
+    // MPI_Wait(&send_request2, &status);
+    
     MPI_Send(&state, 1, MPI_INT, 0, FINISH, MPI_COMM_WORLD);
     return 0;
 }
@@ -243,12 +306,15 @@ int main(int argc, char *argv[])
 {
 
     MPI_Init(&argc, &argv);
-    int rank, hostlen;
+    int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    char processorname[50];
-    MPI_Get_processor_name(processorname, &hostlen);
-    if (argc < 4) {
-        if (rank == 0) printf("usage: md5 <input-password> <password-length> <password-type>[1/2/3/4/5]\n");
+    // char processorname[50];
+    // int hostlen;
+    // MPI_Get_processor_name(processorname, &hostlen);
+    if (argc < 4)
+    {
+        if (rank == 0)
+            printf("usage: md5 <input-hashpassword> <password-length> <password-type>[1-6]\n");
         MPI_Finalize();
         return 1;
     }
@@ -262,49 +328,58 @@ int main(int argc, char *argv[])
     int offset = 0, base = 10;
     switch (passtype)
     {
-        case 1: // number only
-        {
-            base = 10;
-            break;
-        }
-        case 2: // lowercase characters only
-        {
-            base = 26;
-            offset = 10;
-            break;
-        }
-        case 3: // lowercase & number characters
-        {
-            base = 36;
-            break;
-        }
-        case 4: // lowercase & uppercase characters
-        {
-            base = 52;
-            offset = 10;
-            break;
-        }
-        case 5: // number and characters
-        {
-            base = 62;
-            break;
-        }
-        case 6: // number, character, special character
-        {
-            base = 95;
-            break;
-        }
+    case 1: // number only
+    {
+        base = 10;
+        break;
+    }
+    case 2: // lowercase characters only
+    {
+        base = 26;
+        offset = 10;
+        break;
+    }
+    case 3: // lowercase & number characters
+    {
+        base = 36;
+        break;
+    }
+    case 4: // lowercase & uppercase characters
+    {
+        base = 52;
+        offset = 10;
+        break;
+    }
+    case 5: // number and characters
+    {
+        base = 62;
+        break;
+    }
+    case 6: // number, character, special character
+    {
+        base = 95;
+        break;
+    }
     }
 
     long sub_space = (long)pow(base, passlen) / num_process;
-    if (rank == 0) {
-        rank0(processorname, hash_password, num_process, base, passlen, passtype, sub_space, offset, begin);
-    } else {
-        ranki(rank, processorname, base, hash_password, passlen, sub_space, offset);
+    if (rank == 0)
+    {
+        rank0(hash_password, num_process, base, passlen, passtype, sub_space, offset, begin);
+    }
+    else
+    {
+        ranki(rank, base, hash_password, passlen, sub_space, offset);
     }
 
-    printf("Process %d exiting...\n", rank);
+    printf("P%d: exiting...\n", rank);
+    if (rank == 0) {
+        clock_t end = clock();
+        double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+        printf("runtime: %fs\n", time_spent);
+    }
     MPI_Finalize();
+    
     return 0;
 }
 /*
