@@ -1,3 +1,0 @@
-b rank0
-b ranki
-r zz 2 2
