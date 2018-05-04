@@ -375,8 +375,8 @@ int main(int argc, char *argv[])
     printf("P%d: exiting...\n", rank);
     if (rank == 0) {
         clock_t end = clock();
-        double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-        printf("runtime: %fs\n", time_spent);
+        double cpu_time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+        printf("cpu runtime: %fs\n", cpu_time_spent);
     }
     MPI_Finalize();
     
